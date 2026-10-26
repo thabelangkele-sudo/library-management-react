@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import "./App.css";
 
@@ -6,9 +7,10 @@ function App() {
     return JSON.parse(localStorage.getItem("users")) || [];
   });
 
-  const [books, setBooks] = useState(() => {
-    return JSON.parse(localStorage.getItem("books")) || [];
-  });
+  // Books now come from MySQL through the Express API
+  const [books, setBooks] = useState([]);
+  const [booksLoading, setBooksLoading] = useState(true);
+  const [booksError, setBooksError] = useState("");
 
   const [transactions, setTransactions] = useState(() => {
     return JSON.parse(localStorage.getItem("transactions")) || [];
@@ -21,6 +23,33 @@ function App() {
 
   const [page, setPage] = useState("dashboard");
   const [loginMessage, setLoginMessage] = useState("");
+
+  const API_URL = "http://localhost:5000/books";
+
+  // Load books from MySQL
+  async function fetchBooks() {
+    try {
+      setBooksError("");
+
+      const response = await fetch(API_URL);
+
+      if (!response.ok) {
+        throw new Error("Failed to load books.");
+      }
+
+      const data = await response.json();
+      setBooks(data);
+    } catch (error) {
+      console.error("Books error:", error);
+      setBooksError("Could not load books. Check that the server is running.");
+    } finally {
+      setBooksLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchBooks();
+  }, []);
 
   // Default administrator
   useEffect(() => {
@@ -38,14 +67,10 @@ function App() {
     }
   }, []);
 
-  // Save data
+  // Save users and transactions
   useEffect(() => {
     localStorage.setItem("users", JSON.stringify(users));
   }, [users]);
-
-  useEffect(() => {
-    localStorage.setItem("books", JSON.stringify(books));
-  }, [books]);
 
   useEffect(() => {
     localStorage.setItem("transactions", JSON.stringify(transactions));
@@ -81,75 +106,144 @@ function App() {
     setLoginMessage("");
   }
 
-  // ADD BOOK
-  function addBook(e) {
+  // ADD BOOK - saves to MySQL
+  async function addBook(e) {
     e.preventDefault();
 
     const form = e.target;
-    const title = form.title.value;
-    const author = form.author.value;
-    const genre = form.genre.value;
-    const isbn = form.isbn.value;
-    const quantity = Number(form.quantity.value);
 
-    if (books.some((book) => book.isbn === isbn)) {
+    const newBook = {
+      title: form.title.value.trim(),
+      author: form.author.value.trim(),
+      genre: form.genre.value.trim(),
+      isbn: form.isbn.value.trim(),
+      quantity: Number(form.quantity.value),
+    };
+
+    if (books.some((book) => book.isbn === newBook.isbn)) {
       alert("This ISBN already exists.");
       return;
     }
 
-    const newBook = {
-      id: Date.now(),
-      title,
-      author,
-      genre,
-      isbn,
-      quantity,
-    };
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newBook),
+      });
 
-    setBooks((currentBooks) => [...currentBooks, newBook]);
-    form.reset();
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Could not add the book.");
+      }
+
+      await fetchBooks();
+      form.reset();
+      alert("Book added successfully.");
+    } catch (error) {
+      console.error("Add book error:", error);
+      alert(error.message || "Could not add the book. Check the server.");
+    }
   }
 
-  // UPDATE BOOK
-  function updateBook(id) {
+  // UPDATE BOOK - saves changes to MySQL
+  async function updateBook(id) {
     const book = books.find((b) => b.id === id);
 
     if (!book) return;
 
     const title = prompt("Book title:", book.title);
-    const author = prompt("Author:", book.author);
-    const genre = prompt("Genre:", book.genre);
-    const isbn = prompt("ISBN:", book.isbn);
-    const quantityInput = prompt("Quantity:", book.quantity);
+    if (title === null) return;
 
-    setBooks((currentBooks) =>
-      currentBooks.map((b) =>
-        b.id === id
-          ? {
-              ...b,
-              title: title || b.title,
-              author: author || b.author,
-              genre: genre || b.genre,
-              isbn: isbn || b.isbn,
-              quantity:
-                quantityInput === null || quantityInput === ""
-                  ? b.quantity
-                  : Number(quantityInput),
-            }
-          : b
-      )
-    );
+    const author = prompt("Author:", book.author);
+    if (author === null) return;
+
+    const genre = prompt("Genre:", book.genre);
+    if (genre === null) return;
+
+    const isbn = prompt("ISBN:", book.isbn);
+    if (isbn === null) return;
+
+    const quantityInput = prompt("Quantity:", book.quantity);
+    if (quantityInput === null) return;
+
+    const quantity = Number(quantityInput);
+
+    if (
+      !title.trim() ||
+      !author.trim() ||
+      !genre.trim() ||
+      !isbn.trim() ||
+      quantityInput.trim() === "" ||
+      !Number.isInteger(quantity) ||
+      quantity < 0
+    ) {
+      alert("Enter valid book details and a quantity of zero or more.");
+      return;
+    }
+
+    if (books.some((b) => b.id !== id && b.isbn === isbn.trim())) {
+      alert("This ISBN already exists.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          author: author.trim(),
+          genre: genre.trim(),
+          isbn: isbn.trim(),
+          quantity,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Could not update the book.");
+      }
+
+      await fetchBooks();
+      alert("Book updated successfully.");
+    } catch (error) {
+      console.error("Update book error:", error);
+      alert(error.message || "Could not update the book.");
+    }
   }
 
-  // DELETE BOOK
-  function deleteBook(id) {
+  // DELETE BOOK - deletes from MySQL
+  async function deleteBook(id) {
     if (!confirm("Delete this book?")) return;
 
-    setBooks((currentBooks) => currentBooks.filter((book) => book.id !== id));
+    try {
+      const response = await fetch(`${API_URL}/${id}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Could not delete the book.");
+      }
+
+      await fetchBooks();
+      alert("Book deleted successfully.");
+    } catch (error) {
+      console.error("Delete book error:", error);
+      alert(error.message || "Could not delete the book.");
+    }
   }
 
   // RECORD TRANSACTION
-  function recordTransaction(e) {
+  async function recordTransaction(e) {
     e.preventDefault();
 
     const form = e.target;
@@ -159,40 +253,67 @@ function App() {
 
     const book = books.find((b) => b.id === bookId);
 
-    if (!book) return;
+    if (!book) {
+      alert("Please select a valid book.");
+      return;
+    }
 
-    if (type === "borrow" && quantity > book.quantity) {
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      alert("Enter a valid quantity.");
+      return;
+    }
+
+    if (type === "borrow" && quantity > Number(book.quantity)) {
       alert("Not enough books available.");
       return;
     }
 
-    setBooks((currentBooks) =>
-      currentBooks.map((b) =>
-        b.id === bookId
-          ? {
-              ...b,
-              quantity:
-                type === "borrow"
-                  ? b.quantity - quantity
-                  : b.quantity + quantity,
-            }
-          : b
-      )
-    );
+    const updatedQuantity =
+      type === "borrow"
+        ? Number(book.quantity) - quantity
+        : Number(book.quantity) + quantity;
 
-    const newTransaction = {
-      book: book.title,
-      type: type === "add" ? "Stock Added" : "Book Borrowed",
-      quantity,
-      date: new Date().toLocaleString(),
-    };
+    try {
+      const response = await fetch(`${API_URL}/${bookId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: book.title,
+          author: book.author,
+          genre: book.genre,
+          isbn: book.isbn,
+          quantity: updatedQuantity,
+        }),
+      });
 
-    setTransactions((currentTransactions) => [
-      ...currentTransactions,
-      newTransaction,
-    ]);
+      const result = await response.json();
 
-    form.reset();
+      if (!response.ok) {
+        throw new Error(result.message || "Could not update book stock.");
+      }
+
+      await fetchBooks();
+
+      const newTransaction = {
+        book: book.title,
+        type: type === "add" ? "Stock Added" : "Book Borrowed",
+        quantity,
+        date: new Date().toLocaleString(),
+      };
+
+      setTransactions((currentTransactions) => [
+        ...currentTransactions,
+        newTransaction,
+      ]);
+
+      form.reset();
+      alert("Transaction recorded successfully.");
+    } catch (error) {
+      console.error("Transaction error:", error);
+      alert(error.message || "Could not record the transaction.");
+    }
   }
 
   // ADD USER
@@ -250,7 +371,9 @@ function App() {
       0
     );
 
-    const lowStock = books.filter((book) => book.quantity < 2).length;
+    const lowStock = books.filter(
+      (book) => Number(book.quantity) < 2
+    ).length;
 
     return (
       <>
@@ -296,6 +419,14 @@ function App() {
 
   // BOOK TABLE
   function BookTable() {
+    if (booksLoading) {
+      return <p>Loading books...</p>;
+    }
+
+    if (booksError) {
+      return <p>{booksError}</p>;
+    }
+
     if (books.length === 0) {
       return <p>No books available.</p>;
     }
@@ -316,7 +447,7 @@ function App() {
           {books.map((book) => (
             <tr
               key={book.id}
-              className={book.quantity < 2 ? "low-stock" : ""}
+              className={Number(book.quantity) < 2 ? "low-stock" : ""}
             >
               <td>{book.title}</td>
               <td>{book.author}</td>
@@ -332,6 +463,19 @@ function App() {
 
   // BOOK MANAGEMENT
   function BookPage() {
+    if (booksLoading) {
+      return <div className="section-card"><p>Loading books...</p></div>;
+    }
+
+    if (booksError) {
+      return (
+        <div className="section-card">
+          <p>{booksError}</p>
+          <button onClick={fetchBooks}>Try Again</button>
+        </div>
+      );
+    }
+
     return (
       <>
         <div className="section-card">
