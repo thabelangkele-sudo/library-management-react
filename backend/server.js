@@ -1,4 +1,4 @@
-﻿
+
 require("dotenv").config();
 
 const express = require("express");
@@ -44,7 +44,7 @@ app.get("/db-test", async (req, res) => {
             database: rows[0].databaseName
         });
     } catch (error) {
-        console.error("Database error:", error.message);
+        console.error("Database error:", error);
 
         res.status(500).json({
             error: "Database connection failed. Check your server configuration."
@@ -231,4 +231,5 @@ app.delete("/books/:id", async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
+
 
