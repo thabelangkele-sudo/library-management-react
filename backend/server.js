@@ -1,4 +1,4 @@
-
+﻿
 require("dotenv").config();
 
 const express = require("express");
@@ -14,9 +14,13 @@ app.use(express.json());
 // Connect to the MySQL database
 const db = mysql.createPool({
     host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 3306),
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    ssl: {
+        rejectUnauthorized: true
+    },
     waitForConnections: true,
     connectionLimit: 10
 });
@@ -227,3 +231,4 @@ app.delete("/books/:id", async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
+
