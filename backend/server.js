@@ -1,9 +1,10 @@
-
 require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -11,7 +12,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Connect to the MySQL database
+// Connect to the MySQL database using Aiven's CA certificate
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT || 3306),
@@ -19,20 +20,21 @@ const db = mysql.createPool({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     ssl: {
+        ca: fs.readFileSync(path.join(__dirname, "ca.pem"), "utf8"),
         rejectUnauthorized: true
     },
     waitForConnections: true,
     connectionLimit: 10
 });
 
-// Home route: check if the API is running
+// Home route
 app.get("/", (req, res) => {
     res.json({
         message: "UPDATED SERVER 123"
     });
 });
 
-// Test the MySQL database connection
+// Test MySQL connection
 app.get("/db-test", async (req, res) => {
     try {
         const [rows] = await db.query(
@@ -52,7 +54,7 @@ app.get("/db-test", async (req, res) => {
     }
 });
 
-// Get all books from MySQL
+// Get all books
 app.get("/books", async (req, res) => {
     try {
         const [books] = await db.query(
@@ -69,7 +71,7 @@ app.get("/books", async (req, res) => {
     }
 });
 
-// ADD BOOK
+// Add a book
 app.post("/books", async (req, res) => {
     try {
         const { title, author, genre, isbn, quantity } = req.body;
@@ -121,7 +123,7 @@ app.post("/books", async (req, res) => {
     }
 });
 
-// UPDATE BOOK
+// Update a book
 app.put("/books/:id", async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -194,7 +196,7 @@ app.put("/books/:id", async (req, res) => {
     }
 });
 
-// DELETE BOOK
+// Delete a book
 app.delete("/books/:id", async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -231,5 +233,3 @@ app.delete("/books/:id", async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
-
-
